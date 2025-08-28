@@ -4,7 +4,6 @@ import subprocess
 import tkinter.font as tkfont
 import dns.resolver
 import random
-import subprocess
 import threading
 
 from datetime import datetime
@@ -33,27 +32,31 @@ def get_ip_config():
 
 def get_ports(ip):
     open_port_list = []  # new empty list for storing ports
-    for port in range(65535):  # check for all available ports
+    for port in range(65535):  # check for all open (listening/in use) ports
         try:
             serv = socket.socket(
                 socket.AF_INET, socket.SOCK_STREAM
             )  # create a new socket
             serv.bind((ip, port))  # bind socket with address
         except:
+            # print(f"No bind: {port}")
             open_port_list.append(port)
         serv.close()  # close connection
 
     return (
-        f"Total listening ports:",
+        f"Total listening (in use) ports:",
         len(open_port_list),
-        f"The first 10 listening ports are:",
+        f"The first 10 listening (in use) ports are:",
         open_port_list[:10],
     )
 
 
 def get_ip():
-    ip = socket.gethostbyname(socket.gethostname())  # getting ip-address of host
-    return ip
+    try:
+        ip = socket.gethostbyname(socket.gethostname())  # getting ip-address of host
+        return ip
+    except socket.gaierror as e:  # try catch to account for failure to resolve host ip
+        return f"Error retrieving IP: {e}\n This could be due to the hostname not listed in {r'C:\Windows\System32\drivers\etc\hosts'} or due to a DNS or VPN issue. "
 
 
 def get_text_width():
@@ -101,9 +104,9 @@ def get_dns_response():
             # print(rdata.to_text())
             response.append(rdata.to_text())
             # print(response)
-            return domain, response, "success"
+        return domain, response, "success"
 
-            # return result object containing a list of addresses
+        # return result object containing a list of addresses
     except dns.resolver.NXDOMAIN:
         # print("Domain not found")
         return domain, [], "failure_nxdomain"
@@ -119,12 +122,10 @@ def get_dns_address():
         "google.com",
         "cloudflare.com",
     ]
-    dns_choice = random.choice(domain_name_list)  # domain chosen randomly from the list
-    # print(dns_choice)
+    if not domain_name_list:
+        return "google.com"
 
-    # add error handling?
-    # add expected return ip handling?
-    return dns_choice
+    return random.choice(domain_name_list)
 
 
 def get_ping():
@@ -157,7 +158,6 @@ def display_set_home():
 
 
 light_redrawn_views = [
-    "display_dns_response",
     "display_ping",
     "display_ports",
 ]  # views with heavy processes that require redrawing only border content on resize
@@ -197,6 +197,8 @@ def display_refresh_output():
         display_ip_config_info()
     elif current_view == "display_about":
         display_about()
+    elif current_view == "display_dns_response":
+        display_dns_response()
 
     else:  # fallback to return home
         text_area.configure(state="normal")  # Enable editing
@@ -310,8 +312,12 @@ def display_dns_response():
     global current_view
     current_view = "display_dns_response"
     border = get_text_width()
+    # try catch to get variables from returned function get_dns_response and set defaults in case of failure
+    try:
+        domain, dnsresponse, status = get_dns_response()
+    except Exception as e:
+        domain, dnsresponse, status = "unknown", [], "error"
 
-    domain, dnsresponse, status = get_dns_response()
     text_area.configure(state="normal")  # Enable editing
     text_area.delete(1.0, tk.END)  # Clear existing content
     text_area.insert(tk.INSERT, f"{border}\n\n")
@@ -322,21 +328,33 @@ def display_dns_response():
         "DNS Domain resolvers used a from a list of popular DNS test addresses.",
     )
     text_area.insert(tk.INSERT, "\n")
-    if status == "success":
-        text_area.insert(
-            tk.INSERT,
-            f"For the address '{domain}', the DNS response was ({','.join(dnsresponse)}).",
-        )
-    elif status == "failure_nxdomain":
-        text_area.insert(
-            tk.INSERT,
-            f"For the address '{domain}', there was no response. This domain does not exist.)",
-        )
-    elif status == "failure_timeout":
-        text_area.insert(
-            tk.INSERT,
-            f"For the address '{domain}', the DNS query timed out. Please check your internet connection.)",
-        )
+    # large try catch to account for variations of status and allow for unknown status returns to be handled
+    try:
+        if status == "success":
+            text_area.insert(
+                tk.INSERT,
+                f"For the address '{domain}', the DNS response was ({','.join(dnsresponse)}).",
+            )
+        elif status == "failure_nxdomain":
+            text_area.insert(
+                tk.INSERT,
+                f"For the address '{domain}', there was no response. This domain does not exist.)",
+            )
+        elif status == "failure_timeout":
+            text_area.insert(
+                tk.INSERT,
+                f"For the address '{domain}', the DNS query timed out. Please check your internet connection.)",
+            )
+        elif status == "error":
+            text_area.insert(
+                tk.INSERT,
+                f"There was a problem resolving the domain.)",
+            )
+        else:
+            text_area.insert(tk.INSERT, "Unknown DNS error. \n")
+    except Exception as e:
+        text_area.insert(tk.INSERT, f"Failed to display DNS response: {e}")
+
     text_area.configure(state="disabled")  # Make it read-only again
 
 
