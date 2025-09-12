@@ -95,7 +95,7 @@ def get_sys_details():
 def get_dns_response():
 
     try:
-        domain = get_dns_address()
+        domain, dns_address = get_dns_address()
         answer = dns.resolver.resolve(
             domain, "A"
         )  # query dns resolver for A (IPV4) for the address google.com
@@ -104,18 +104,26 @@ def get_dns_response():
             # print(rdata.to_text())
             response.append(rdata.to_text())
             # print(response)
-        return domain, response, "success"
+        return domain, response, "success", dns_address
 
         # return result object containing a list of addresses
     except dns.resolver.NXDOMAIN:
         # print("Domain not found")
-        return domain, [], "failure_nxdomain"
+        return domain, [], "failure_nxdomain", dns_address
     except dns.resolver.Timeout:
         # print("DNS lookup timed out")
-        return domain, [], "failure_timeout"
+        return domain, [], "failure_timeout", dns_address
+
+
+def get_system_dns_servers():
+    resolver = dns.resolver.Resolver()
+    return resolver.nameservers
 
 
 def get_dns_address():
+
+    dns_servers = get_system_dns_servers()
+    # print(type(dns_servers))
     domain_name_list = [  # list of domains to translate
         "iana.org",
         "example.com",
@@ -125,7 +133,7 @@ def get_dns_address():
     if not domain_name_list:
         return "google.com"
 
-    return random.choice(domain_name_list)
+    return random.choice(domain_name_list), dns_servers
 
 
 def get_ping():
@@ -314,9 +322,9 @@ def display_dns_response():
     border = get_text_width()
     # try catch to get variables from returned function get_dns_response and set defaults in case of failure
     try:
-        domain, dnsresponse, status = get_dns_response()
+        domain, dnsresponse, status, dns_address = get_dns_response()
     except Exception as e:
-        domain, dnsresponse, status = "unknown", [], "error"
+        domain, dnsresponse, status, dns_address = "unknown", [], "error", dns_address
 
     text_area.configure(state="normal")  # Enable editing
     text_area.delete(1.0, tk.END)  # Clear existing content
@@ -325,25 +333,50 @@ def display_dns_response():
     text_area.insert(tk.INSERT, f"\n{border}\n")
     text_area.insert(
         tk.INSERT,
-        "DNS Domain resolvers used a from a list of popular DNS test addresses.",
+        "The DNS Domain Resolver contacts a local DNS server, having chosen an address from a list of popular DNS test addresses.\n",
     )
+    text_area.insert(
+        tk.INSERT,
+        f"The DNS Server currently being used for testing is: {dns_address}.\n",
+    )
+
+    found_local_router = False
+
+    for dns_ip in dns_address:
+        if dns_ip == "192.168.1.254":
+            text_area.insert(
+                tk.INSERT,
+                f"DNS server: {dns_ip} is your local router requesting its ISP's DNS server.\n",
+            )
+            found_local_router = True
+        else:
+            text_area.insert(
+                tk.INSERT,
+                f"DNS server {dns_ip} is NOT the local router, but a different DNS server globally.\n",
+            )
+
+    if not found_local_router:
+        text_area.insert(
+            tk.INSERT, "None of the DNS servers are the local router (192.168.1.254).\n"
+        )
+
     text_area.insert(tk.INSERT, "\n")
     # large try catch to account for variations of status and allow for unknown status returns to be handled
     try:
         if status == "success":
             text_area.insert(
                 tk.INSERT,
-                f"For the address '{domain}', the DNS response was ({','.join(dnsresponse)}).",
+                f"For the address '{domain}', the DNS server responsed with:\n{'\n'.join(dnsresponse)}",
             )
         elif status == "failure_nxdomain":
             text_area.insert(
                 tk.INSERT,
-                f"For the address '{domain}', there was no response. This domain does not exist.)",
+                f"For the address '{domain}', the DNS server gave no response. This domain does not exist.)",
             )
         elif status == "failure_timeout":
             text_area.insert(
                 tk.INSERT,
-                f"For the address '{domain}', the DNS query timed out. Please check your internet connection.)",
+                f"For the address '{domain}', the DNS server query timed out. Please check your internet connection.)",
             )
         elif status == "error":
             text_area.insert(
@@ -353,7 +386,7 @@ def display_dns_response():
         else:
             text_area.insert(tk.INSERT, "Unknown DNS error. \n")
     except Exception as e:
-        text_area.insert(tk.INSERT, f"Failed to display DNS response: {e}")
+        text_area.insert(tk.INSERT, f"Failed to display DNS server response: {e}")
 
     text_area.configure(state="disabled")  # Make it read-only again
 
