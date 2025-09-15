@@ -5,6 +5,8 @@ import tkinter.font as tkfont
 import dns.resolver
 import random
 import threading
+import webbrowser
+import platform
 
 from datetime import datetime
 from colorama import init as colorama_init
@@ -81,21 +83,15 @@ def get_text_width():
 
 
 def get_sys_details():
-    border = get_text_width()
     hostname = socket.gethostname()  # get device name
     ip = get_ip()  # getting ip-address of host
-    return (
-        f"{border}\n"
-        f"\nYour Computer's name registers as: {hostname}\n"
-        f"Your IP address is currently {ip}\n"
-        f"{border}\n"
-    )
+    return hostname, ip
 
 
 def get_dns_response():
 
     try:
-        domain, dns_address = get_dns_address()
+        domain, dns_servers = get_dns_address()
         answer = dns.resolver.resolve(
             domain, "A"
         )  # query dns resolver for A (IPV4) for the address google.com
@@ -104,15 +100,15 @@ def get_dns_response():
             # print(rdata.to_text())
             response.append(rdata.to_text())
             # print(response)
-        return domain, response, "success", dns_address
+        return domain, response, "success", dns_servers
 
         # return result object containing a list of addresses
     except dns.resolver.NXDOMAIN:
         # print("Domain not found")
-        return domain, [], "failure_nxdomain", dns_address
+        return domain, [], "failure_nxdomain", dns_servers
     except dns.resolver.Timeout:
         # print("DNS lookup timed out")
-        return domain, [], "failure_timeout", dns_address
+        return domain, [], "failure_timeout", dns_servers
 
 
 def get_system_dns_servers():
@@ -136,17 +132,20 @@ def get_dns_address():
     return random.choice(domain_name_list), dns_servers
 
 
-def get_ping():
+def get_ping(
+    ping_location,
+):  # get_ping us called and uses the domain return from display_ping/run_ping to ensure consistent domain until get_dns_address is called again (another ping test)
+    print(f"Pinging: {ping_location}")
+    # ping_location, _ = get_dns_address()
+    # print(f"{str(ping_location)}")
     try:
-        out = subprocess.run(["ping", "google.com"], capture_output=True, timeout=10)
+        out = subprocess.run([f"ping", ping_location], capture_output=True, timeout=10)
         output = out.stdout
-        return output
+        return output, ping_location
     except subprocess.TimeoutExpired:
         return "Ping command timed out. Please check your internet connection."
     except Exception as e:
         return f"Ping error: {e}"
-
-    # add other ping locations?
 
 
 # ================================================================================
@@ -237,13 +236,23 @@ def display_system_details():
     global current_view
     current_view = "display_system_details"
     border = get_text_width()
+    hostname, ip = get_sys_details()
 
     text_area.configure(state="normal")  # Enable editing
     text_area.delete(1.0, tk.END)  # Clear existing content
     text_area.insert(tk.INSERT, f"{border}\n\n")
     text_area.insert(tk.INSERT, "System Details\n")
+    text_area.insert(tk.INSERT, f"\n{border}\n")
     text_area.insert(tk.INSERT, "\n")
-    text_area.insert(tk.INSERT, get_sys_details())
+    
+    text_area.insert(tk.INSERT, f"PC Name: {hostname}\n")
+    text_area.insert(tk.INSERT, f"IP Address: {ip}\n")
+    text_area.insert(tk.INSERT, f"OS: {platform.system()}\n")
+    text_area.insert(tk.INSERT, f"Release: {platform.release()}\n")
+    text_area.insert(tk.INSERT, f"OS Version: {platform.version()}\n")
+    text_area.insert(tk.INSERT, f"Machine Type: {platform.machine()}\n")
+    text_area.insert(tk.INSERT, f"Architecture: {platform.architecture()}\n")
+    text_area.insert(tk.INSERT, f"Processor: {platform.processor()}\n")
     text_area.configure(state="disabled")  # Make it read-only again
 
 
@@ -295,19 +304,27 @@ def display_ping():
     global current_view
     current_view = "display_ping"
     border = get_text_width()
+    ping_location, _ = (
+        get_dns_address()
+    )  # get random domain from dns address list to ping. _ means to ignore second return result
 
     text_area.configure(state="normal")  # Enable editing
     text_area.delete(1.0, tk.END)  # Clear existing content
     text_area.insert(tk.INSERT, f"{border}\n\n")
     text_area.insert(tk.INSERT, "Ping Status:\n")
     text_area.insert(tk.INSERT, f"\n{border}\n")
-    text_area.insert(tk.INSERT, "\n Pinging 'google.com'...\n")
+    text_area.insert(tk.INSERT, f"\nPinging {ping_location}...\n")
     text_area.configure(state="disabled")  # Make it read-only again
     text_area.update()
 
     def run_ping():
-        result = get_ping()
+        result, _ = get_ping(
+            ping_location
+        )  # call get_ping with randomly chosen domain - do not change it now - this way we ping the same domain as we printed in 313
+        if current_view != "display_ping":
+            return  # abort writing result of function if test is aborted mid test
         text_area.configure(state="normal")  # Enable editing
+
         text_area.insert(tk.INSERT, result)
         text_area.configure(state="disabled")  # Make it read-only again
 
@@ -322,9 +339,9 @@ def display_dns_response():
     border = get_text_width()
     # try catch to get variables from returned function get_dns_response and set defaults in case of failure
     try:
-        domain, dnsresponse, status, dns_address = get_dns_response()
+        domain, dnsresponse, status, dns_servers = get_dns_response()
     except Exception as e:
-        domain, dnsresponse, status, dns_address = "unknown", [], "error", dns_address
+        domain, dnsresponse, status, dns_servers = "unknown", [], "error", None
 
     text_area.configure(state="normal")  # Enable editing
     text_area.delete(1.0, tk.END)  # Clear existing content
@@ -337,12 +354,12 @@ def display_dns_response():
     )
     text_area.insert(
         tk.INSERT,
-        f"The DNS Server currently being used for testing is: {dns_address}.\n",
+        f"The DNS Server currently being used for testing is: {dns_servers[0]}.\n",
     )
 
     found_local_router = False
 
-    for dns_ip in dns_address:
+    for dns_ip in dns_servers:
         if dns_ip == "192.168.1.254":
             text_area.insert(
                 tk.INSERT,
@@ -366,7 +383,7 @@ def display_dns_response():
         if status == "success":
             text_area.insert(
                 tk.INSERT,
-                f"For the address '{domain}', the DNS server responsed with:\n{'\n'.join(dnsresponse)}",
+                f"For the address '{domain}', the DNS server responded with:\n{'\n'.join(dnsresponse)}",
             )
         elif status == "failure_nxdomain":
             text_area.insert(
@@ -392,6 +409,10 @@ def display_dns_response():
 
 
 def display_about():
+
+    def open_url(event):
+        webbrowser.open_new("https://github.com/MikaDvs/md-diagnostic-tool")
+
     global current_view
     current_view = "display_about"
     border = get_text_width()
@@ -401,6 +422,16 @@ def display_about():
     text_area.insert(tk.INSERT, f"{border}\n\n")
     text_area.insert(tk.INSERT, "About the MD Diagnostics Tool\n")
     text_area.insert(tk.INSERT, f"\n{border}\n")
+    text_area.insert(tk.INSERT, "\nAuthor: Mika Davis\n")
+    text_area.insert(tk.INSERT, "\nMore info at my ")
+
+    text_area.insert(tk.INSERT, "Github Repository", "hyperlink")
+    text_area.tag_config("hyperlink", foreground="blue", underline=1)
+    text_area.tag_bind("hyperlink", "<Button-1>", open_url)
+    text_area.tag_bind(
+        "hyperlink", "<Enter>", lambda e: text_area.config(cursor="hand2")
+    )
+    text_area.tag_bind("hyperlink", "<Leave>", lambda e: text_area.config(cursor=""))
     text_area.configure(state="disabled")  # Make it read-only again
 
 
