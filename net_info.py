@@ -7,13 +7,15 @@ import random
 import threading
 import webbrowser
 import platform
+import time
+
 
 from datetime import datetime
 from colorama import init as colorama_init
 from colorama import Fore
 from colorama import Style
 from tkinter import scrolledtext
-
+from PIL import Image, ImageTk
 
 colorama_init()
 
@@ -244,7 +246,7 @@ def display_system_details():
     text_area.insert(tk.INSERT, "System Details\n")
     text_area.insert(tk.INSERT, f"\n{border}\n")
     text_area.insert(tk.INSERT, "\n")
-    
+
     text_area.insert(tk.INSERT, f"PC Name: {hostname}\n")
     text_area.insert(tk.INSERT, f"IP Address: {ip}\n")
     text_area.insert(tk.INSERT, f"OS: {platform.system()}\n")
@@ -439,12 +441,59 @@ def display_about():
 # GUI Setup
 # ====================================================
 
+# create center window function
+
+
+def center_window(window):
+    window.update_idletasks()
+    width = window.winfo_width()
+    height = window.winfo_height()
+    screen_width = window.winfo_screenwidth()
+    screen_height = window.winfo_screenheight()
+    x = (screen_width - width) // 2
+    y = (screen_height - height) // 2
+    window.geometry(f"{width}x{height}+{x}+{y}")
+
+
 # initialize root tk window properties
+
 root = tk.Tk()
+root.withdraw()
 root.iconbitmap(default="netico.ico")
-root.title("MD System Diagnostics Tool")
 root.geometry("900x600")
+root.title("MD System Diagnostics Tool")
+center_window(root)
+
 # add taskbar icon?
+
+# ====================================================
+# splash screen
+# ====================================================
+
+splash_screen = tk.Toplevel(background="white")
+splash_screen.overrideredirect(True)
+splash_screen.title("Loading")
+
+original_splash_image = Image.open("splash.png")
+image = ImageTk.PhotoImage(original_splash_image)
+
+img_width, img_height = original_splash_image.size
+
+splash_screen.geometry(f"{img_width}x{img_height}")
+center_window(splash_screen)
+
+
+image = tk.PhotoImage(file="splash.png")
+label = tk.Label(splash_screen, image=image)
+label.pack()
+
+splash_screen.update()
+time.sleep(2)
+
+root.deiconify()
+splash_screen.destroy()
+
+# ====================================================
 
 
 def on_resize(
@@ -659,9 +708,10 @@ refresh_button.pack(side="left", padx=10)
 
 
 # ====================================================
-# Initial content load
+# Main content load
 # ====================================================
 
 display_refresh_output()
 # Start the GUI loop
+
 root.mainloop()
